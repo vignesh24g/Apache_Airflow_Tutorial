@@ -129,6 +129,9 @@ source airflow_env/bin/activate
 
 ```bash
 airflow webserver --port 8080
+#or
+nohup airflow webserver --port 8080 > webserver.log 2>&1 &
+
 
 ```
 
