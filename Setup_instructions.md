@@ -6,69 +6,69 @@
 
 ### 1. Update System Packages
 
-
+```bash
 sudo apt update && sudo apt upgrade -y
 
-
+```
 
 ### 2. Install Python and pip
 
 - Airflow requires **Python 3.8+**.
 
-
+```bash
 sudo apt install python3 python3-pip python3-venv -y
 
-
+```
 
 ### 3. Create a Virtual Environment
 
 It’s best to isolate Airflow from system Python.
 
-
+```bash
 python3 -m venv airflow_env
 source airflow_env/bin/activate
 
-
+```
 
 ### 4. Upgrade pip and setuptools
 
-
+```bash
 pip install --upgrade pip setuptools wheel
 
-
+```
 
 ### 5. Install Apache Airflow
 
 Airflow is distributed via PyPI. Choose the version compatible with your Python.
 
-
+```bash
 export AIRFLOW_VERSION=2.9.3
 export PYTHON_VERSION="$(python --version | cut -d " " -f 2 | cut -d "." -f 1-2)"
 export CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
 
 pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
 
-
+```
 
 - You can add extras like `postgres`, `mysql`, `celery`, or `redis`:
 
-
+```bash
 pip install "apache-airflow[postgres,celery]==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
 
-
+```
 
 ### 6. Initialize Airflow Database
 
 Airflow uses a metadata database (default SQLite).
 
-
+```bash
 airflow db init
 
-
+```
 
 ### 7. Create an Admin User
 
-
+```bash
 airflow users create \
     --username admin \
     --firstname Admin \
@@ -76,23 +76,23 @@ airflow users create \
     --role Admin \
     --email admin@example.com
 
-
+```
 
 ### 8. Start Airflow Services
 
 - **Webserver** (default port 8080):
 
-
+```bash
 airflow webserver --port 8080
 
-
+```
 
 - **Scheduler** (in a separate terminal):
 
-
+```bash
 airflow scheduler
 
-
+```
 
 ### 9. Access the UI
 
@@ -120,24 +120,24 @@ Great question 👍. Once Apache Airflow is installed and initialized, you don�
 
 1. **Activate your virtual environment** (if you created one):
 
-
+```bash
 source airflow_env/bin/activate
 
-
+```
 
 1. **Start the Airflow webserver** (default port 8080):
 
-
+```bash
 airflow webserver --port 8080
 
-
+```
 
 1. **Start the Airflow scheduler** (in a separate terminal):
 
-
+```bash
 airflow scheduler
 
-
+```
 
 ---
 
@@ -146,11 +146,11 @@ airflow scheduler
 - Always run **both** the webserver and scheduler, otherwise DAGs won’t execute.
 - If you want them to run in the background, you can use:
 
-
+```bash
 airflow webserver -D
 airflow scheduler -D
 
-
+```
 
 (`-D` runs them as daemons).
 
@@ -160,4 +160,3 @@ airflow scheduler -D
 ---
 
 👉 So next time, just **activate the environment** and run **webserver + scheduler**.
-
