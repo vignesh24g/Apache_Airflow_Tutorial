@@ -7,7 +7,7 @@
   "containerEnv": {
     "AIRFLOW_HOME": "/workspaces/Apache_Airflow_Tutorial/.airflow_home",
     "AIRFLOW__CORE__DAGS_FOLDER": "/workspaces/Apache_Airflow_Tutorial/dags",
-    "AIRFLOW__CORE__LOAD_EXAMPLES": "True",
+    "AIRFLOW__CORE__LOAD_EXAMPLES": "False",
     "AIRFLOW__WEBSERVER__WEB_SERVER_HOST": "0.0.0.0",
     "AIRFLOW__WEBSERVER__WEB_SERVER_PORT": "8080",
     "AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX": "True",
