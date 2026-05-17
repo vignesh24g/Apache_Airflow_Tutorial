@@ -1,0 +1,38 @@
+{
+  "name": "Apache Airflow Standalone Workspace",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "containerEnv": {
+    "AIRFLOW_HOME": "/workspaces/Apache_Airflow_Tutorial/.airflow_home",
+    "AIRFLOW__CORE__DAGS_FOLDER": "/workspaces/Apache_Airflow_Tutorial/dags",
+    "AIRFLOW__CORE__LOAD_EXAMPLES": "True",
+    "AIRFLOW__WEBSERVER__WEB_SERVER_HOST": "0.0.0.0",
+    "AIRFLOW__WEBSERVER__WEB_SERVER_PORT": "8080",
+    "AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX": "True",
+    "AIRFLOW__WEBSERVER__PROXY_FIX_X_FOR": "1",
+    "AIRFLOW__WEBSERVER__PROXY_FIX_X_PROTO": "1",
+    "AIRFLOW__WEBSERVER__PROXY_FIX_X_HOST": "1",
+    "AIRFLOW__WEBSERVER__PROXY_FIX_X_PORT": "1",
+    "AIRFLOW__WEBSERVER__PROXY_FIX_X_PREFIX": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "tumblr.airflow-vscode-extension"
+      ]
+    }
+  },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "Airflow Webserver",
+      "onAutoForward": "notify",
+      "visibility": "public" 
+    }
+  },
+  "postStartCommand": "echo 'Airflow Home is ready. Run: airflow standalone'"
+}
