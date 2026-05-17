@@ -1,42 +1,125 @@
 #!/usr/bin/env bash
+# =============================================================================
+# setup_airflow.sh — Airflow Standalone for GitHub Codespaces (or local)
+# Usage: bash setup_airflow.sh
+# =============================================================================
 set -euo pipefail
-
 cd "$(dirname "$0")"
 
-AIRFLOW_HOME="${AIRFLOW_HOME:-$HOME/airflow}"
+# ── Colour helpers ────────────────────────────────────────────────────────────
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+info()    { echo -e "${GREEN}[INFO]${NC}  $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
+# ── Config ────────────────────────────────────────────────────────────────────
+AIRFLOW_VERSION="${AIRFLOW_VERSION:-2.10.2}"
+PROJECT_DIR="$(pwd)"   
+AIRFLOW_HOME="${AIRFLOW_HOME:-$PROJECT_DIR/airflow}"
+VENV_DIR="$(pwd)/airflow_env"
+PORT="${AIRFLOW__WEBSERVER__WEB_SERVER_PORT:-8080}"
+
 export AIRFLOW_HOME
 mkdir -p "$AIRFLOW_HOME"
 
-VENV_DIR="./airflow_env"
-if [[ ! -d "$VENV_DIR" || ! -f "$VENV_DIR/bin/activate" ]]; then
+# ── 1. Python virtual environment ─────────────────────────────────────────────
+info "Setting up Python virtual environment at $VENV_DIR …"
+if [[ ! -f "$VENV_DIR/bin/activate" ]]; then
   rm -rf "$VENV_DIR"
   python3 -m venv "$VENV_DIR"
 fi
+# shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 
-pip install --upgrade pip setuptools wheel
+pip install --quiet --upgrade pip setuptools wheel
 
-AIRFLOW_VERSION="${AIRFLOW_VERSION:-2.10.2}"
-PYTHON_VERSION="$(python3 --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2)"
+# ── 2. Install Airflow with constraints ───────────────────────────────────────
+PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
 
-pip install --upgrade "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
+info "Installing Apache Airflow ${AIRFLOW_VERSION} (Python ${PYTHON_VERSION}) …"
+pip install --quiet \
+  "apache-airflow==${AIRFLOW_VERSION}" \
+  --constraint "${CONSTRAINT_URL}"
 
-export AIRFLOW__WEBSERVER__WEB_SERVER_HOST="${AIRFLOW__WEBSERVER__WEB_SERVER_HOST:-0.0.0.0}"
-export AIRFLOW__WEBSERVER__WEB_SERVER_PORT="${AIRFLOW__WEBSERVER__WEB_SERVER_PORT:-8080}"
+# ── 3. Resolve Base URL (the critical Codespaces fix) ─────────────────────────
+#
+# GitHub Codespaces forwards ports via:
+#   https://{PORT}-{CODESPACE_NAME}.{GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}
+#
+# Airflow's webserver checks the HTTP Host/Referer header and rejects requests
+# that don't match BASE_URL — so we MUST set this to the forwarded URL.
+# We also enable proxy-fix so Airflow trusts X-Forwarded-* headers from the
+# Codespaces reverse proxy.
 
 if [[ -n "${AIRFLOW_BASE_URL:-}" ]]; then
-  export AIRFLOW__WEBSERVER__BASE_URL="$AIRFLOW_BASE_URL"
+  # Explicit override — highest priority
+  BASE_URL="$AIRFLOW_BASE_URL"
+  info "Using user-supplied AIRFLOW_BASE_URL: $BASE_URL"
+
 elif [[ -n "${CODESPACE_NAME:-}" && -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]]; then
-  export AIRFLOW__WEBSERVER__BASE_URL="https://${AIRFLOW__WEBSERVER__WEB_SERVER_PORT}-${CODESPACE_NAME}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
-  echo "Detected Codespaces preview URL: ${AIRFLOW__WEBSERVER__BASE_URL}"
+  # Auto-detect from Codespaces environment variables
+  BASE_URL="https://${PORT}-${CODESPACE_NAME}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
+  info "Detected Codespaces — base URL: $BASE_URL"
+
 elif [[ -n "${CODESPACE_NAME:-}" ]]; then
-  echo "WARNING: Running in Codespaces and AIRFLOW_BASE_URL is not set."
-  echo "Set AIRFLOW_BASE_URL to your forwarded preview URL to avoid referrer host errors."
-  echo "Example: export AIRFLOW_BASE_URL=\"https://8080-<id>.preview.app.github.dev\""
+  # CODESPACE_NAME present but forwarding domain missing (older Codespaces)
+  BASE_URL="https://${PORT}-${CODESPACE_NAME}.preview.app.github.dev"
+  warn "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN not set; guessing: $BASE_URL"
+  warn "If the UI errors, set: export AIRFLOW_BASE_URL=<your forwarded URL>"
+
+else
+  # Local / non-Codespaces
+  BASE_URL="http://localhost:${PORT}"
+  info "Running locally — base URL: $BASE_URL"
 fi
 
-echo "Airflow home: $AIRFLOW_HOME"
-echo "Airflow base URL: ${AIRFLOW__WEBSERVER__BASE_URL:-not set}"
+# ── 4. Export ALL required Airflow env vars ───────────────────────────────────
+#
+# Airflow reads AIRFLOW__{SECTION}__{KEY} at runtime; no airflow.cfg edits needed.
 
-airflow standalone
+# Webserver
+export AIRFLOW__WEBSERVER__WEB_SERVER_HOST="0.0.0.0"
+export AIRFLOW__WEBSERVER__WEB_SERVER_PORT="$PORT"
+export AIRFLOW__WEBSERVER__BASE_URL="$BASE_URL"
+
+# Proxy fix — MUST be enabled so Airflow trusts X-Forwarded-Proto/Host
+# from the Codespaces reverse proxy; without this you get "CSRF / host mismatch" errors.
+export AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX="True"
+export AIRFLOW__WEBSERVER__PROXY_FIX_X_FOR="1"
+export AIRFLOW__WEBSERVER__PROXY_FIX_X_PROTO="1"
+export AIRFLOW__WEBSERVER__PROXY_FIX_X_HOST="1"
+export AIRFLOW__WEBSERVER__PROXY_FIX_X_PORT="1"
+export AIRFLOW__WEBSERVER__PROXY_FIX_X_PREFIX="1"
+
+# Core
+export AIRFLOW__CORE__LOAD_EXAMPLES="False"          # skip noisy example DAGs
+export AIRFLOW__CORE__EXECUTOR="SequentialExecutor"  # standalone default; no extra deps
+
+# Database (SQLite — fine for standalone)
+export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="sqlite:///${AIRFLOW_HOME}/airflow.db"
+
+# ── 5. Summary before launch ──────────────────────────────────────────────────
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+info  "AIRFLOW_HOME : $AIRFLOW_HOME"
+info  "Base URL     : $BASE_URL"
+info  "Port         : $PORT"
+info  "Python       : $PYTHON_VERSION"
+info  "Airflow ver  : $AIRFLOW_VERSION"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+if [[ -n "${CODESPACE_NAME:-}" ]]; then
+  warn "In Codespaces: make sure port ${PORT} is set to PUBLIC (or at least"
+  warn "forwarded) in the Ports tab, otherwise the browser preview will 403."
+  echo ""
+fi
+
+info "Starting Airflow standalone (Ctrl-C to stop) …"
+info "The admin password will appear in the log below — look for:"
+info "  'standalone | Login with username: admin  password: XXXX'"
+echo ""
+
+# ── 6. Launch ─────────────────────────────────────────────────────────────────
+exec airflow standalone
